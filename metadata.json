@@ -1,0 +1,5 @@
+{
+  "name": "TaxAI Workspace",
+  "description": "An AI-powered workspace for tax-related tasks, offering both a simple citizen mode and an advanced officer mode with coding and voice capabilities.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"]
+}

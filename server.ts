@@ -31,8 +31,32 @@ async function startServer() {
           max_tokens: 16000,
         }),
       });
-      if (!response.ok) throw new Error(`NVIDIA NIM API error: ${await response.text()}`);
-      const data = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`NVIDIA NIM API error (${response.status} ${response.statusText}): ${errorText || '(empty response body)'}`);
+      }
+
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        const rawText = await response.text();
+        console.error(`[/api/nim] Unexpected content-type "${contentType}". Raw response body: ${rawText}`);
+        throw new Error(`NVIDIA NIM API returned non-JSON response (content-type: "${contentType}")`);
+      }
+
+      const rawText = await response.text();
+      if (!rawText || rawText.trim() === '') {
+        console.error('[/api/nim] NVIDIA NIM API returned an empty response body');
+        throw new Error('NVIDIA NIM API returned an empty response body');
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseError: any) {
+        console.error(`[/api/nim] Failed to parse JSON response. Raw body: ${rawText}`);
+        throw new Error(`Failed to parse NVIDIA NIM API response as JSON: ${parseError.message}`);
+      }
+
       res.json(data);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

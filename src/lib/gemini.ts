@@ -27,47 +27,53 @@ export async function callGemini(messages: ChatMessage[], mode: AgentMode) {
 }
 
 export async function callNim(model: string, messages: ChatMessage[]) {
-  const response = await fetch('/api/nim', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: messages.map(m => {
-        const content: any[] = [];
-        if (m.text) content.push({ type: "text", text: m.text });
-        if (m.files) {
-          m.files.forEach(f => {
-            if (f.mimeType.startsWith('image/')) {
-              content.push({ 
-                type: "image_url", 
-                image_url: { url: `data:${f.mimeType};base64,${f.data}` } 
-              });
-            } else if (f.extractedText) {
-              content.push({ type: "text", text: `\n\nFile: ${f.name}\nContent: ${f.extractedText}` });
-            }
-          });
-        }
-        return { role: m.role, content: content.length > 0 ? content : m.text };
-      })
-    }),
-  });
-
-  console.log(`[callNim] /api/nim response — status: ${response.status} ${response.statusText}, content-type: "${response.headers.get('content-type') ?? ''}"`);
-
-  let data: any;
-  const rawText = await response.text();
   try {
-    data = JSON.parse(rawText);
-  } catch (e) {
-    console.error(`[callNim] Failed to parse /api/nim response as JSON. Status: ${response.status} ${response.statusText}, content-type: "${response.headers.get('content-type') ?? ''}", raw body: ${rawText}`);
-    throw new Error(`Failed to parse /api/nim response as JSON. Raw body: ${rawText}`);
-  }
+    const response = await fetch('/api/nim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: messages.map(m => {
+          const content: any[] = [];
+          if (m.text) content.push({ type: "text", text: m.text });
+          if (m.files) {
+            m.files.forEach(f => {
+              if (f.mimeType.startsWith('image/')) {
+                content.push({ 
+                  type: "image_url", 
+                  image_url: { url: `data:${f.mimeType};base64,${f.data}` } 
+                });
+              } else if (f.extractedText) {
+                content.push({ type: "text", text: `\n\nFile: ${f.name}\nContent: ${f.extractedText}` });
+              }
+            });
+          }
+          return { role: m.role, content: content.length > 0 ? content : m.text };
+        })
+      }),
+    });
 
-  if (!response.ok || data.error) {
-    throw new Error(`NVIDIA NIM API error: ${data.error ?? response.statusText}`);
-  }
+    if (!response.ok) {
+      const text = await response.text();
+      let errorMessage = text;
+      try {
+        const jsonError = JSON.parse(text);
+        errorMessage = jsonError.error || jsonError.message || text;
+      } catch (e) {
+        // Ignore JSON parse error for error text
+      }
+      throw new Error(`Backend Error (${response.status}): ${errorMessage || 'Empty response'}`);
+    }
 
-  return data.choices[0].message.content;
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    return data.choices[0].message.content;
+  } catch (error: any) {
+    console.error("NIM API Call Error:", error);
+    throw error;
+  }
 }
 
 export async function callMaxAgent(messages: ChatMessage[], mode: AgentMode) {

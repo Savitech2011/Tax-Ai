@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import Editor from '@monaco-editor/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { ChevronLeft, Sparkles, Maximize2, FileText, Code, ChevronDown, Paperclip, Mic, MicOff, Map, ArrowUp, Loader2, X, Play } from 'lucide-react';
+import { ChevronLeft, Sparkles, Maximize2, FileText, Code, ChevronDown, Paperclip, Mic, MicOff, Map, ArrowUp, Loader2, X, Play, Copy, ThumbsUp, ThumbsDown, Download, MoreHorizontal } from 'lucide-react';
 
 const AgentFace = ({ isActive }: { isActive: boolean }) => {
   const lookAnimation: any = {
@@ -83,6 +83,40 @@ const ThinkingAnimation = () => {
         {text}
       </motion.span>
     </motion.div>
+  );
+};
+
+const MessageActions = ({ text }: { text: string }) => {
+  const [isLiked, setIsLiked] = useState<boolean | null>(null);
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(text);
+  };
+
+  const downloadText = () => {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'response.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const readAloud = () => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  return (
+    <div className="flex items-center gap-3 mt-4 text-gray-400">
+      <button onClick={copyToClipboard} className="hover:text-gray-600 transition-colors p-1" title="Copy"><Copy className="w-4 h-4" /></button>
+      <button onClick={() => setIsLiked(true)} className={cn("hover:text-gray-600 transition-colors p-1", isLiked === true ? "text-purple-600" : "")} title="Like"><ThumbsUp className="w-4 h-4" /></button>
+      <button onClick={() => setIsLiked(false)} className={cn("hover:text-gray-600 transition-colors p-1", isLiked === false ? "text-purple-600" : "")} title="Dislike"><ThumbsDown className="w-4 h-4" /></button>
+      <button onClick={downloadText} className="hover:text-gray-600 transition-colors p-1" title="Download"><Download className="w-4 h-4" /></button>
+      <button onClick={readAloud} className="hover:text-gray-600 transition-colors p-1" title="Read Aloud"><MoreHorizontal className="w-4 h-4" /></button>
+    </div>
   );
 };
 
@@ -434,6 +468,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                                     >
                                       {content}
                                     </ReactMarkdown>
+                                    {msg.role === 'model' && (!isStreaming || msg.id !== messages[messages.length - 1].id) && (
+                                      <MessageActions text={content} />
+                                    )}
                                   </motion.div>
                                 )}
                                 

@@ -48,7 +48,7 @@ export async function callNim(model: string, messages: ChatMessage[]) {
               }
             });
           }
-          return { role: m.role, content: content.length > 0 ? content : m.text };
+          return { role: m.role === 'model' ? 'assistant' : m.role, content: content.length > 0 ? content : m.text };
         })
       }),
     });

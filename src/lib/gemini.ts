@@ -52,11 +52,14 @@ export async function callNim(model: string, messages: ChatMessage[]) {
     }),
   });
 
+  console.log(`[callNim] /api/nim response — status: ${response.status} ${response.statusText}, content-type: "${response.headers.get('content-type') ?? ''}"`);
+
   let data: any;
   const rawText = await response.text();
   try {
     data = JSON.parse(rawText);
   } catch (e) {
+    console.error(`[callNim] Failed to parse /api/nim response as JSON. Status: ${response.status} ${response.statusText}, content-type: "${response.headers.get('content-type') ?? ''}", raw body: ${rawText}`);
     throw new Error(`Failed to parse /api/nim response as JSON. Raw body: ${rawText}`);
   }
 

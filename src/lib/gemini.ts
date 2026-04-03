@@ -51,7 +51,19 @@ export async function callNim(model: string, messages: ChatMessage[]) {
       })
     }),
   });
-  const data = await response.json();
+
+  let data: any;
+  const rawText = await response.text();
+  try {
+    data = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error(`Failed to parse /api/nim response as JSON. Raw body: ${rawText}`);
+  }
+
+  if (!response.ok || data.error) {
+    throw new Error(`NVIDIA NIM API error: ${data.error ?? response.statusText}`);
+  }
+
   return data.choices[0].message.content;
 }
 

@@ -5,58 +5,38 @@ export const NIM_MODELS = {
   'openai/gpt-oss-120b': 'openai/gpt-oss-120b',
 };
 
+/**
+ * Sends a message to a NVIDIA NIM model via the backend proxy at /api/nim.
+ *
+ * The API key is never accessed from the browser — it lives exclusively in the
+ * server environment (process.env.NVIDIA_NIM_API_KEY loaded via dotenv) and is
+ * used only inside the Express /api/nim handler.
+ */
 export async function sendNIMMessageStream(
   model: string,
   messages: { role: string; content: string }[],
   onChunk: (text: string) => void
 ) {
-  const apiKey = process.env.NVIDIA_NIM_API_KEY;
-  if (!apiKey) {
-    throw new Error("NVIDIA_NIM_API_KEY is missing.");
-  }
-
-  const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+  const response = await fetch('/api/nim', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: messages,
-      stream: true,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages }),
   });
 
-  if (!response.ok) {
-    throw new Error(`NVIDIA NIM API error: ${response.statusText}`);
+  let data: any;
+  const rawText = await response.text();
+
+  try {
+    data = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error(`Failed to parse /api/nim response as JSON. Raw body: ${rawText}`);
   }
 
-  const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
-  let fullText = "";
-
-  if (reader) {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') break;
-          try {
-            const json = JSON.parse(data);
-            const content = json.choices[0]?.delta?.content || '';
-            fullText += content;
-            onChunk(fullText);
-          } catch (e) {
-            console.error('Error parsing JSON', e);
-          }
-        }
-      }
-    }
+  if (!response.ok || data.error) {
+    throw new Error(`NVIDIA NIM API error: ${data.error ?? response.statusText}`);
   }
-  return fullText;
+
+  const content: string = data.choices?.[0]?.message?.content ?? '';
+  onChunk(content);
+  return content;
 }

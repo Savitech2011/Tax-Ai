@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -13,11 +14,25 @@ async function startServer() {
     next();
   });
 
+  // Endpoint to confirm the NIM key is configured (does not expose the key itself)
+  app.get("/api/nim-key", (req, res) => {
+    const configured = !!process.env.NVIDIA_NIM_API_KEY;
+    if (!configured) {
+      console.error("[/api/nim-key] NVIDIA_NIM_API_KEY is not set in the environment");
+      return res.status(503).json({ configured: false, error: "NVIDIA_NIM_API_KEY is not configured on the server" });
+    }
+    res.json({ configured: true });
+  });
+
   app.post("/api/nim", async (req, res) => {
     const { model, messages } = req.body;
     try {
       const apiKey = process.env.NVIDIA_NIM_API_KEY;
-      if (!apiKey) throw new Error("NVIDIA_NIM_API_KEY is not defined");
+      if (!apiKey) {
+        console.error("[/api/nim] NVIDIA_NIM_API_KEY is not set in the environment. Ensure it is defined in your .env file or deployment secrets.");
+        throw new Error("NVIDIA_NIM_API_KEY is not configured on the server");
+      }
+      console.log(`[/api/nim] Calling NVIDIA NIM model: ${model}`);
       const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
         method: 'POST',
         headers: {

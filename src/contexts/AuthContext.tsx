@@ -23,34 +23,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
         // Only consider the user logged in if they used Google (auto-verified) or verified their email
         if (firebaseUser.emailVerified || firebaseUser.providerData.some(p => p.providerId === 'google.com')) {
           let name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User';
           
-          try {
-            const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-            if (userDoc.exists() && userDoc.data().displayName) {
-              name = userDoc.data().displayName;
-            }
-          } catch (err) {
-            console.error("Error fetching user profile:", err);
-          }
-
+          // Set user immediately so UI doesn't block
           setUser({
             id: firebaseUser.uid,
             email: firebaseUser.email || '',
             name,
             emailVerified: firebaseUser.emailVerified
           });
+          setIsLoading(false);
+
+          // Fetch profile asynchronously
+          getDoc(doc(db, 'users', firebaseUser.uid)).then(userDoc => {
+            if (userDoc.exists() && userDoc.data().displayName) {
+              setUser(prev => prev ? { ...prev, name: userDoc.data().displayName } : null);
+            }
+          }).catch(err => {
+            console.error("Error fetching user profile:", err);
+          });
+
         } else {
           setUser(null);
+          setIsLoading(false);
         }
       } else {
         setUser(null);
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
     return () => unsubscribe();

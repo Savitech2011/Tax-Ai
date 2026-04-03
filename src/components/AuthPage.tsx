@@ -30,15 +30,20 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
   };
 
   const saveUserToFirestore = async (user: any, displayName: string) => {
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
-      await setDoc(userRef, {
-        uid: user.uid,
-        email: user.email,
-        displayName: displayName || user.displayName || '',
-        createdAt: new Date().toISOString()
-      });
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: displayName || user.displayName || '',
+          createdAt: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error("Firestore save error (non-blocking):", err);
+      // We don't throw here so that the user can still log in even if Firestore is slow or fails
     }
   };
 

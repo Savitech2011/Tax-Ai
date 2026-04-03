@@ -26,13 +26,15 @@ async function startServer() {
 
   app.post("/api/nim", async (req, res) => {
     const { model, messages } = req.body;
+    console.log(`[/api/nim] Endpoint called — model: ${model}, message count: ${Array.isArray(messages) ? messages.length : 'N/A'}`);
     try {
       const apiKey = process.env.NVIDIA_NIM_API_KEY;
+      console.log(`[/api/nim] API key status: ${apiKey ? 'defined (length ' + apiKey.length + ')' : 'NOT defined'}`);
       if (!apiKey) {
         console.error("[/api/nim] NVIDIA_NIM_API_KEY is not set in the environment. Ensure it is defined in your .env file or deployment secrets.");
         throw new Error("NVIDIA_NIM_API_KEY is not configured on the server");
       }
-      console.log(`[/api/nim] Calling NVIDIA NIM model: ${model}`);
+      console.log(`[/api/nim] Sending request to NVIDIA NIM API for model: ${model}`);
       const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -46,19 +48,23 @@ async function startServer() {
           max_tokens: 16000,
         }),
       });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`NVIDIA NIM API error (${response.status} ${response.statusText}): ${errorText || '(empty response body)'}`);
-      }
 
       const contentType = response.headers.get('content-type') ?? '';
+      console.log(`[/api/nim] NVIDIA API response — status: ${response.status} ${response.statusText}, content-type: "${contentType}"`);
+      console.log(`[/api/nim] NVIDIA API response headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`);
+
+      const rawText = await response.text();
+      console.log(`[/api/nim] NVIDIA API raw response body: ${rawText}`);
+
+      if (!response.ok) {
+        throw new Error(`NVIDIA NIM API error (${response.status} ${response.statusText}): ${rawText || '(empty response body)'}`);
+      }
+
       if (!contentType.includes('application/json')) {
-        const rawText = await response.text();
         console.error(`[/api/nim] Unexpected content-type "${contentType}". Raw response body: ${rawText}`);
         throw new Error(`NVIDIA NIM API returned non-JSON response (content-type: "${contentType}")`);
       }
 
-      const rawText = await response.text();
       if (!rawText || rawText.trim() === '') {
         console.error('[/api/nim] NVIDIA NIM API returned an empty response body');
         throw new Error('NVIDIA NIM API returned an empty response body');
@@ -72,8 +78,10 @@ async function startServer() {
         throw new Error(`Failed to parse NVIDIA NIM API response as JSON: ${parseError.message}`);
       }
 
+      console.log(`[/api/nim] Sending successful response back to client — choices: ${data?.choices?.length ?? 'N/A'}`);
       res.json(data);
     } catch (error: any) {
+      console.error(`[/api/nim] Error: ${error.message}`);
       res.status(500).json({ error: error.message });
     }
   });

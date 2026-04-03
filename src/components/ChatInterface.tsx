@@ -1,14 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
+import * as pdfjs from 'pdfjs-dist';
 import { AgentMode, ChatMessage, sendMessageStream } from '../lib/gemini';
+
+// Set up PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 import { LiveSession } from '../lib/live';
 import { VoiceFace } from './VoiceFace';
 import ReactMarkdown from 'react-markdown';
 import Editor from '@monaco-editor/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { ChevronLeft, Sparkles, Maximize2, FileText, Code, ChevronDown, Paperclip, Mic, MicOff, Map, ArrowUp, Loader2, X, Play, Copy, ThumbsUp, ThumbsDown, Download, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, Sparkles, Maximize2, FileText, Code, ChevronDown, Paperclip, Mic, MicOff, Map, ArrowUp, Loader2, X, Play, Copy, ThumbsUp, ThumbsDown, Download, MoreHorizontal, LogOut } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const AgentFace = ({ isActive }: { isActive: boolean }) => {
   const lookAnimation: any = {
@@ -121,9 +126,11 @@ const MessageActions = ({ text }: { text: string }) => {
 };
 
 export default function ChatInterface({ onBack }: { onBack: () => void }) {
+  const { logout, user } = useAuth();
   const [mode, setMode] = useState<AgentMode>('citizen');
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [selectedModel, setSelectedModel] = useState('gemini-3-flash-preview');
+  const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
 
   const models = [
     { name: 'Gemini Flash', id: 'gemini-3-flash-preview' },
@@ -222,6 +229,21 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
             } catch (err) {
               console.error("Error extracting text from xlsx:", err);
             }
+          } else if (file.name.endsWith('.pdf')) {
+            try {
+              const loadingTask = pdfjs.getDocument({ data: uint8Array });
+              const pdf = await loadingTask.promise;
+              let fullText = '';
+              for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map((item: any) => (item as any).str).join(' ');
+                fullText += pageText + '\n';
+              }
+              extractedText = fullText;
+            } catch (err) {
+              console.error("Error extracting text from pdf:", err);
+            }
           }
 
           return { 
@@ -286,7 +308,11 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
       console.error('Error sending message:', error);
       let errorMessage = 'Sorry, I encountered an error processing your request. Please check your connection or try again later.';
       
-      if (error?.message) {
+      if (error?.message?.includes('RATE_LIMIT_EXCEEDED')) {
+        const modelId = error.message.split(': ')[1] || selectedModel;
+        setDisabledModels(prev => new Set(prev).add(modelId));
+        errorMessage = `Rate limit reached for ${modelId}. This model is temporarily unavailable. Please try another model or wait a moment.`;
+      } else if (error?.message) {
         errorMessage += ` (Error: ${error.message})`;
       }
       
@@ -352,7 +378,9 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                     className="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     {models.map(model => (
-                      <option key={model.id} value={model.id}>{model.name}</option>
+                      <option key={model.id} value={model.id} disabled={disabledModels.has(model.id)}>
+                        {model.name} {disabledModels.has(model.id) ? '(Rate Limited)' : ''}
+                      </option>
                     ))}
                   </select>
                 )}
@@ -365,6 +393,17 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
                     Open Workspace
                   </button>
                 )}
+                <button 
+                  onClick={async () => {
+                    await logout();
+                    onBack();
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all border bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                  title="Log out"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
                 <div className="flex items-center gap-2 bg-white rounded-full p-1 border border-gray-200 shadow-sm">
                   <button
                     onClick={() => setMode('citizen')}

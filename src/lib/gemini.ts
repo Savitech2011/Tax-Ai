@@ -20,7 +20,7 @@ export async function callGemini(messages: ChatMessage[], mode: AgentMode) {
     model: modelName,
     contents: messages[messages.length - 1].text,
     config: {
-      systemInstruction: "You are a helpful assistant. Keep your responses concise and within reasonable length. Avoid generating excessively long responses."
+      systemInstruction: "You are an expert tax assistant. You must ONLY respond to tax-related tasks and questions. If a user asks about anything else, politely decline and remind them that you are a specialized tax AI. Keep your responses concise and within reasonable length."
     }
   });
   return response.text;
@@ -28,28 +28,36 @@ export async function callGemini(messages: ChatMessage[], mode: AgentMode) {
 
 export async function callNim(model: string, messages: ChatMessage[]) {
   try {
+    const formattedMessages = messages.map(m => {
+      const content: any[] = [];
+      if (m.text) content.push({ type: "text", text: m.text });
+      if (m.files) {
+        m.files.forEach(f => {
+          if (f.mimeType.startsWith('image/')) {
+            content.push({ 
+              type: "image_url", 
+              image_url: { url: `data:${f.mimeType};base64,${f.data}` } 
+            });
+          } else if (f.extractedText) {
+            content.push({ type: "text", text: `\n\nFile: ${f.name}\nContent: ${f.extractedText}` });
+          }
+        });
+      }
+      return { role: m.role === 'model' ? 'assistant' : m.role, content: content.length > 0 ? content : m.text };
+    });
+
+    // Prepend system prompt for NVIDIA models
+    formattedMessages.unshift({
+      role: 'system',
+      content: "You are an expert tax assistant. You must ONLY respond to tax-related tasks and questions. If a user asks about anything else, politely decline and remind them that you are a specialized tax AI. Keep your responses concise and within reasonable length."
+    });
+
     const response = await fetch('/api/nim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
-        messages: messages.map(m => {
-          const content: any[] = [];
-          if (m.text) content.push({ type: "text", text: m.text });
-          if (m.files) {
-            m.files.forEach(f => {
-              if (f.mimeType.startsWith('image/')) {
-                content.push({ 
-                  type: "image_url", 
-                  image_url: { url: `data:${f.mimeType};base64,${f.data}` } 
-                });
-              } else if (f.extractedText) {
-                content.push({ type: "text", text: `\n\nFile: ${f.name}\nContent: ${f.extractedText}` });
-              }
-            });
-          }
-          return { role: m.role === 'model' ? 'assistant' : m.role, content: content.length > 0 ? content : m.text };
-        })
+        messages: formattedMessages
       }),
     });
 
@@ -62,6 +70,11 @@ export async function callNim(model: string, messages: ChatMessage[]) {
       } catch (e) {
         // Ignore JSON parse error for error text
       }
+      
+      if (response.status === 429) {
+        throw new Error(`RATE_LIMIT_EXCEEDED: ${model}`);
+      }
+      
       throw new Error(`Backend Error (${response.status}): ${errorMessage || 'Empty response'}`);
     }
 

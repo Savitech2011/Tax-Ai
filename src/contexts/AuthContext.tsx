@@ -1,16 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { auth, db } from '../lib/firebase';
+import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface User {
   id: string;
   email: string;
   name: string;
+  emailVerified: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string) => void;
-  register: (email: string, name: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -21,47 +23,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check local storage for existing session
-    const storedUser = localStorage.getItem('taxai_user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error('Failed to parse stored user', e);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        // Only consider the user logged in if they used Google (auto-verified) or verified their email
+        if (firebaseUser.emailVerified || firebaseUser.providerData.some(p => p.providerId === 'google.com')) {
+          let name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User';
+          
+          try {
+            const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+            if (userDoc.exists() && userDoc.data().displayName) {
+              name = userDoc.data().displayName;
+            }
+          } catch (err) {
+            console.error("Error fetching user profile:", err);
+          }
+
+          setUser({
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name,
+            emailVerified: firebaseUser.emailVerified
+          });
+        } else {
+          setUser(null);
+        }
+      } else {
+        setUser(null);
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const login = (email: string) => {
-    // Mock login
-    const mockUser = {
-      id: Math.random().toString(36).substring(2, 9),
-      email,
-      name: email.split('@')[0],
-    };
-    setUser(mockUser);
-    localStorage.setItem('taxai_user', JSON.stringify(mockUser));
-  };
-
-  const register = (email: string, name: string) => {
-    // Mock register
-    const mockUser = {
-      id: Math.random().toString(36).substring(2, 9),
-      email,
-      name,
-    };
-    setUser(mockUser);
-    localStorage.setItem('taxai_user', JSON.stringify(mockUser));
-  };
-
-  const logout = () => {
+  const logout = async () => {
+    await firebaseSignOut(auth);
     setUser(null);
-    localStorage.removeItem('taxai_user');
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import ChatInterface from './components/ChatInterface';
+import AuthPage from './components/AuthPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 function AppContent() {
   const [started, setStarted] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
   const { user, isLoading } = useAuth();
 
   useEffect(() => {
     if (user) {
       setStarted(true);
+      setShowAuth(false);
     }
   }, [user]);
 
@@ -21,11 +24,24 @@ function AppContent() {
     );
   }
 
-  if (!started) {
-    return <LandingPage onStart={() => setStarted(true)} />;
+  if (showAuth && !user) {
+    return <AuthPage onLogin={() => setStarted(true)} />;
   }
 
-  return <ChatInterface onBack={() => setStarted(false)} />;
+  if (!started) {
+    return <LandingPage onStart={() => {
+      if (user) {
+        setStarted(true);
+      } else {
+        setShowAuth(true);
+      }
+    }} />;
+  }
+
+  return <ChatInterface onBack={() => {
+    setStarted(false);
+    setShowAuth(false);
+  }} />;
 }
 
 export default function App() {

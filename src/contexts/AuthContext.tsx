@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
-import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChanged, reload, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
 interface User {
@@ -23,38 +23,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        // Only consider the user logged in if they used Google (auto-verified) or verified their email
-        if (firebaseUser.emailVerified || firebaseUser.providerData.some(p => p.providerId === 'google.com')) {
-          let name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User';
-          
-          // Set user immediately so UI doesn't block
-          setUser({
-            id: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            name,
-            emailVerified: firebaseUser.emailVerified
-          });
-          setIsLoading(false);
-
-          // Fetch profile asynchronously
-          getDoc(doc(db, 'users', firebaseUser.uid)).then(userDoc => {
-            if (userDoc.exists() && userDoc.data().displayName) {
-              setUser(prev => prev ? { ...prev, name: userDoc.data().displayName } : null);
-            }
-          }).catch(err => {
-            console.error("Error fetching user profile:", err);
-          });
-
-        } else {
-          setUser(null);
-          setIsLoading(false);
-        }
-      } else {
+    const resolveAuthState = async (firebaseUser: FirebaseUser | null) => {
+      if (!firebaseUser) {
         setUser(null);
         setIsLoading(false);
+        return;
       }
+
+      // Refresh user metadata so recently verified emails are recognized quickly.
+      try {
+        await reload(firebaseUser);
+      } catch (error) {
+        console.error('Could not reload Firebase user metadata:', error);
+      }
+
+      const currentUser = auth.currentUser ?? firebaseUser;
+      const isGoogleUser = currentUser.providerData.some((provider) => provider.providerId === 'google.com');
+
+      if (!currentUser.emailVerified && !isGoogleUser) {
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const name = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+      setUser({
+        id: currentUser.uid,
+        email: currentUser.email || '',
+        name,
+        emailVerified: currentUser.emailVerified
+      });
+      setIsLoading(false);
+
+      // Fetch profile asynchronously and update name if profile exists.
+      getDoc(doc(db, 'users', currentUser.uid))
+        .then((userDoc) => {
+          if (userDoc.exists() && userDoc.data().displayName) {
+            setUser((prev) => (prev ? { ...prev, name: userDoc.data().displayName } : null));
+          }
+        })
+        .catch((err) => {
+          console.error('Error fetching user profile:', err);
+        });
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+      resolveAuthState(firebaseUser).catch((error) => {
+        console.error('Error resolving auth state:', error);
+        setUser(null);
+        setIsLoading(false);
+      });
     });
 
     return () => unsubscribe();

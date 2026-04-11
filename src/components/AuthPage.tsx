@@ -26,7 +26,24 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
     if (err.code === 'auth/email-already-in-use') setError('This email is already registered.');
     else if (err.code === 'auth/invalid-credential') setError('Invalid email or password.');
     else if (err.code === 'auth/weak-password') setError('Password should be at least 6 characters.');
+    else if (err.code === 'auth/too-many-requests') setError('Too many attempts. Please wait a minute and try again.');
+    else if (err.message === 'Authentication request timed out') setError('Authentication is taking too long. Please try again.');
     else setError(err.message || 'An error occurred during authentication.');
+  };
+
+  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs = 15000): Promise<T> => {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error('Authentication request timed out')), timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
   };
 
   const saveUserToFirestore = async (user: any, displayName: string) => {
@@ -55,21 +72,19 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
 
     try {
       if (isLogin) {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await withTimeout(signInWithEmailAndPassword(auth, email, password));
         if (!userCredential.user.emailVerified) {
           setError('Please verify your email address before logging in. Check your inbox.');
-          auth.signOut();
-        } else {
-          onLogin();
+          await auth.signOut();
         }
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await withTimeout(createUserWithEmailAndPassword(auth, email, password));
         // Run these in the background so they don't block the UI
         sendEmailVerification(userCredential.user).catch(e => console.error("Verification email error:", e));
         saveUserToFirestore(userCredential.user, name);
         
         setMessage('Registration successful! Please check your email to verify your account.');
-        auth.signOut();
+        await auth.signOut();
         setIsLogin(true);
       }
     } catch (err) {
@@ -84,7 +99,7 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
     setIsLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
+      const result = await withTimeout(signInWithPopup(auth, provider));
       // Run in background
       saveUserToFirestore(result.user, result.user.displayName || '');
       onLogin();
@@ -104,7 +119,7 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
     setMessage('');
     setIsLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await withTimeout(sendPasswordResetEmail(auth, email));
       setMessage('Password reset email sent! Please check your inbox.');
     } catch (err) {
       handleAuthError(err);

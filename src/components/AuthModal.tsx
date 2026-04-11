@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,23 +17,23 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { login, register } = useAuth();
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    if (mode === 'login') {
-      login(email);
-    } else {
-      register(email, name);
+    try {
+      if (mode === 'login') {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        if (name.trim()) {
+          await updateProfile(userCredential.user, { displayName: name.trim() });
+        }
+      }
+      onClose();
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
-    onClose();
   };
 
   const toggleMode = () => {

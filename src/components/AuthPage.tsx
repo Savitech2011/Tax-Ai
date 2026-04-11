@@ -64,8 +64,10 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
         }
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await sendEmailVerification(userCredential.user);
-        await saveUserToFirestore(userCredential.user, name);
+        // Run these in the background so they don't block the UI
+        sendEmailVerification(userCredential.user).catch(e => console.error("Verification email error:", e));
+        saveUserToFirestore(userCredential.user, name);
+        
         setMessage('Registration successful! Please check your email to verify your account.');
         auth.signOut();
         setIsLogin(true);
@@ -83,7 +85,8 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      await saveUserToFirestore(result.user, result.user.displayName || '');
+      // Run in background
+      saveUserToFirestore(result.user, result.user.displayName || '');
       onLogin();
     } catch (err) {
       handleAuthError(err);

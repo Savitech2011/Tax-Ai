@@ -26,83 +26,8 @@ export async function callGemini(messages: ChatMessage[], mode: AgentMode) {
   return response.text;
 }
 
-export async function callNim(model: string, messages: ChatMessage[]) {
-  try {
-    const formattedMessages = messages.map(m => {
-      const content: any[] = [];
-      if (m.text) content.push({ type: "text", text: m.text });
-      if (m.files) {
-        m.files.forEach(f => {
-          if (f.mimeType.startsWith('image/')) {
-            content.push({ 
-              type: "image_url", 
-              image_url: { url: `data:${f.mimeType};base64,${f.data}` } 
-            });
-          } else if (f.extractedText) {
-            content.push({ type: "text", text: `\n\nFile: ${f.name}\nContent: ${f.extractedText}` });
-          }
-        });
-      }
-      return { role: m.role === 'model' ? 'assistant' : m.role, content: content.length > 0 ? content : m.text };
-    });
-
-    // Prepend system prompt for NVIDIA models
-    formattedMessages.unshift({
-      role: 'system',
-      content: "You are an expert tax assistant. You must ONLY respond to tax-related tasks and questions. If a user asks about anything else, politely decline and remind them that you are a specialized tax AI. Keep your responses concise and within reasonable length."
-    });
-
-    const response = await fetch('/api/nim', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: formattedMessages
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      let errorMessage = text;
-      try {
-        const jsonError = JSON.parse(text);
-        errorMessage = jsonError.error || jsonError.message || text;
-      } catch (e) {
-        // Ignore JSON parse error for error text
-      }
-      
-      if (response.status === 429) {
-        throw new Error(`RATE_LIMIT_EXCEEDED: ${model}`);
-      }
-      
-      throw new Error(`Backend Error (${response.status}): ${errorMessage || 'Empty response'}`);
-    }
-
-    const data = await response.json();
-    if (data.error) {
-      throw new Error(data.error);
-    }
-    return data.choices[0].message.content;
-  } catch (error: any) {
-    console.error("NIM API Call Error:", error);
-    throw error;
-  }
-}
-
 export async function callMaxAgent(messages: ChatMessage[], mode: AgentMode) {
-  const prompt = messages[messages.length - 1].text;
-  let model = 'gemini-3-flash-preview';
-  if (prompt.toLowerCase().includes('code') || prompt.toLowerCase().includes('dashboard')) {
-    model = 'openai/gpt-oss-120b';
-  } else if (prompt.toLowerCase().includes('tax') || prompt.toLowerCase().includes('review')) {
-    model = 'moonshotai/kimi-k2.5';
-  }
-
-  if (model.startsWith('gemini')) {
-    return await callGemini(messages, mode);
-  } else {
-    return await callNim(model, messages);
-  }
+  return await callGemini(messages, mode);
 }
 
 export async function sendMessageStream(
@@ -113,12 +38,10 @@ export async function sendMessageStream(
   onChunk: (text: string) => void
 ) {
   let result: string;
-  if (isAutoMode) {
-    result = await callMaxAgent(messages, mode);
-  } else if (model.startsWith('gemini')) {
+  if (isAutoMode || model.startsWith('gemini')) {
     result = await callGemini(messages, mode) || '';
   } else {
-    result = await callNim(model, messages);
+    result = await callMaxAgent(messages, mode);
   }
   
   onChunk(result);

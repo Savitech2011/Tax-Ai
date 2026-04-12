@@ -19,7 +19,6 @@ View your app in AI Studio: https://ai.studio/apps/afa5e812-9c19-4b96-a9d6-c82ac
    - `GEMINI_API_KEY`
    - `VITE_INSFORGE_URL`
    - `VITE_INSFORGE_API_KEY`
-   - `NVIDIA_NIM_API_KEY` (if you use NIM models)
 3. Run the app:
    `npm run dev`
 

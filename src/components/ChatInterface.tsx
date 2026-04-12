@@ -135,10 +135,6 @@ export default function ChatInterface({ onBack }: { onBack: () => void }) {
   const models = [
     { name: 'Gemini Flash', id: 'gemini-3-flash-preview' },
     { name: 'Gemini Pro', id: 'gemini-3.1-pro-preview' },
-    { name: 'Minimax m2.5', id: 'minimaxai/minimax-m2.5' },
-    { name: 'Kimi k2.5', id: 'moonshotai/kimi-k2.5' },
-    { name: 'GLM 5', id: 'z-ai/glm5' },
-    { name: 'GPT oss 120b', id: 'openai/gpt-oss-120b' },
   ];
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');

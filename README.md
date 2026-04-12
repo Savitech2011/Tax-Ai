@@ -15,6 +15,18 @@ View your app in AI Studio: https://ai.studio/apps/afa5e812-9c19-4b96-a9d6-c82ac
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Create `.env.local` from `.env.example` and set:
+   - `GEMINI_API_KEY`
+   - `VITE_INSFORGE_URL`
+   - `VITE_INSFORGE_API_KEY`
+   - `NVIDIA_NIM_API_KEY` (if you use NIM models)
 3. Run the app:
    `npm run dev`
+
+## Auth + Backend
+
+This app now uses **Insforge** for authentication/backend endpoints:
+- Base URL: `https://w7bhh4bs.us-east.insforge.app`
+- Auth endpoints are called from the frontend via `src/lib/insforge.ts`.
+
+For production (including Vercel), add the same env vars in project settings.

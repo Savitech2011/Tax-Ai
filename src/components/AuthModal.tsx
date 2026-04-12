@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { signInWithEmail, signUpWithEmail } from '../lib/insforge';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,23 +16,25 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { login, register } = useAuth();
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    if (mode === 'login') {
-      login(email);
-    } else {
-      register(email, name);
+    try {
+      if (mode === 'login') {
+        await signInWithEmail({ email, password });
+      } else {
+        await signUpWithEmail({
+          email,
+          password,
+          name: name.trim() || undefined,
+          redirectTo: `${window.location.origin}/`,
+        });
+      }
+      onClose();
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
-    onClose();
   };
 
   const toggleMode = () => {

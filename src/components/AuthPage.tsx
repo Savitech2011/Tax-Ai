@@ -1,18 +1,8 @@
 import React, { useState } from 'react';
-import { auth, db } from '../lib/firebase';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  sendEmailVerification, 
-  sendPasswordResetEmail, 
-  signInWithPopup, 
-  GoogleAuthProvider 
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { sendPasswordReset, signInWithEmail, signUpWithEmail } from '../lib/insforge';
 import { Sparkles, Mail, Lock, User, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-import { cn } from '../lib/utils';
 
-export default function AuthPage({ onLogin }: { onLogin: () => void }) {
+export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,27 +13,26 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
 
   const handleAuthError = (err: any) => {
     console.error(err);
-    if (err.code === 'auth/email-already-in-use') setError('This email is already registered.');
-    else if (err.code === 'auth/invalid-credential') setError('Invalid email or password.');
-    else if (err.code === 'auth/weak-password') setError('Password should be at least 6 characters.');
+    if (String(err.message).toLowerCase().includes('already')) setError('This email is already registered.');
+    else if (String(err.message).toLowerCase().includes('invalid')) setError('Invalid email or password.');
+    else if (String(err.message).toLowerCase().includes('password')) setError('Password should be at least 6 characters.');
+    else if (String(err.message).toLowerCase().includes('too many')) setError('Too many attempts. Please wait a minute and try again.');
+    else if (err.message === 'Authentication request timed out') setError('Authentication is taking too long. Please try again.');
     else setError(err.message || 'An error occurred during authentication.');
   };
 
-  const saveUserToFirestore = async (user: any, displayName: string) => {
+  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs = 15000): Promise<T> => {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error('Authentication request timed out')), timeoutMs);
+    });
+
     try {
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          uid: user.uid,
-          email: user.email,
-          displayName: displayName || user.displayName || '',
-          createdAt: new Date().toISOString()
-        });
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
       }
-    } catch (err) {
-      console.error("Firestore save error (non-blocking):", err);
-      // We don't throw here so that the user can still log in even if Firestore is slow or fails
     }
   };
 
@@ -55,39 +44,27 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
 
     try {
       if (isLogin) {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        if (!userCredential.user.emailVerified) {
+        const data = await withTimeout(signInWithEmail({ email, password }));
+        if (!data.user?.emailVerified) {
           setError('Please verify your email address before logging in. Check your inbox.');
-          auth.signOut();
-        } else {
-          onLogin();
         }
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        // Run these in the background so they don't block the UI
-        sendEmailVerification(userCredential.user).catch(e => console.error("Verification email error:", e));
-        saveUserToFirestore(userCredential.user, name);
-        
-        setMessage('Registration successful! Please check your email to verify your account.');
-        auth.signOut();
+        const data = await withTimeout(
+          signUpWithEmail({
+            email,
+            password,
+            name,
+            redirectTo: `${window.location.origin}/`,
+          })
+        );
+
+        setMessage(
+          data.requireEmailVerification
+            ? 'Registration successful! Please verify your email, then sign in.'
+            : 'Registration successful! You can now sign in.'
+        );
         setIsLogin(true);
       }
-    } catch (err) {
-      handleAuthError(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setError('');
-    setIsLoading(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      // Run in background
-      saveUserToFirestore(result.user, result.user.displayName || '');
-      onLogin();
     } catch (err) {
       handleAuthError(err);
     } finally {
@@ -104,7 +81,7 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
     setMessage('');
     setIsLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await withTimeout(sendPasswordReset(email, `${window.location.origin}/`));
       setMessage('Password reset email sent! Please check your inbox.');
     } catch (err) {
       handleAuthError(err);
@@ -230,8 +207,8 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
 
             <div className="mt-6">
               <button
-                onClick={handleGoogleSignIn}
-                disabled={isLoading}
+                type="button"
+                disabled
                 className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 transition-colors"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -240,7 +217,7 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                 </svg>
-                Google
+                Google (configure in Insforge dashboard)
               </button>
             </div>
           </div>

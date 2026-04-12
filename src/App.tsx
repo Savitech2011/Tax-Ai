@@ -25,7 +25,7 @@ function AppContent() {
   }
 
   if (showAuth && !user) {
-    return <AuthPage onLogin={() => setStarted(true)} />;
+    return <AuthPage />;
   }
 
   if (!started) {

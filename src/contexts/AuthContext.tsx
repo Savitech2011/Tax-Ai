@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { auth, db } from '../lib/firebase';
-import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { fetchCurrentUser, signOutInsforge } from '../lib/insforge';
 
 interface User {
   id: string;
@@ -23,45 +21,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        // Only consider the user logged in if they used Google (auto-verified) or verified their email
-        if (firebaseUser.emailVerified || firebaseUser.providerData.some(p => p.providerId === 'google.com')) {
-          let name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User';
-          
-          // Set user immediately so UI doesn't block
-          setUser({
-            id: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            name,
-            emailVerified: firebaseUser.emailVerified
-          });
-          setIsLoading(false);
-
-          // Fetch profile asynchronously
-          getDoc(doc(db, 'users', firebaseUser.uid)).then(userDoc => {
-            if (userDoc.exists() && userDoc.data().displayName) {
-              setUser(prev => prev ? { ...prev, name: userDoc.data().displayName } : null);
-            }
-          }).catch(err => {
-            console.error("Error fetching user profile:", err);
-          });
-
-        } else {
+    const loadCurrentUser = async () => {
+      try {
+        const currentUser = await fetchCurrentUser();
+        if (!currentUser) {
           setUser(null);
-          setIsLoading(false);
+          return;
         }
-      } else {
+
+        setUser({
+          id: currentUser.id,
+          email: currentUser.email,
+          name: currentUser.profile?.name || currentUser.email.split('@')[0] || 'User',
+          emailVerified: Boolean(currentUser.emailVerified),
+        });
+      } catch (error) {
+        console.error('Error resolving Insforge auth state:', error);
         setUser(null);
+      } finally {
         setIsLoading(false);
       }
-    });
+    };
 
-    return () => unsubscribe();
+    loadCurrentUser();
   }, []);
 
   const logout = async () => {
-    await firebaseSignOut(auth);
+    await signOutInsforge();
     setUser(null);
   };
 
